@@ -1,39 +1,46 @@
-<!-- [![cover][cover-art]][anidb-id] -->
+[![cover][cover-art]][anidb-id]
 
 ## Anime Information
 
 | Field            | Details       |
 | ---------------- | ------------- |
-| **Title**        |               |
-| **TVDB ID**      |               |
-| **AniDB ID**     |               |
-| **Season**       |               |
+| **Title**        | Non Non Biyori Vacation           |
+| **TVDB ID**      |11905|
+| **AniDB ID**     |13187|
+| **Season**       |Movie|
 
 ---
 
 ## Staff
 
-### Episode Staff
+### Caramel Staff
 
 | Role                  | Name                                           |
 | --------------------- | ---------------------------------------------- |
-| **Translation**       |                                                |
-| **Translation Check** |                                                |
-| **Editing**           |                                                |
-| **Encode**            |                                                |
-| **Timing**            |                                                |
-| **Typesetting**       |                                                |
-| **Quality Control**   |                                                |
-| **Special Thanks**    |                                                |
+| **Translation**       | Nino                                           |
+| **Lyrics**            | Nail, Surya Tambuaga                           |
+| **Editing**           | Nail                                           |
+| **Timing**            | [FFF-Vivid]                                    |
+| **Typesetting**       | Nail (Edit dari [FFF-Vivid])                   |
+| **Final Check**       | Shuka                                          |
 
-### Song Staff
+### Melody Staff
 
 | Role                  | Name                                           |
 | --------------------- | ---------------------------------------------- |
-| **Translation**       |                                                |
-| **Editing**           |                                                |
-| **Timing**            |                                                |
-| **Song Styling**      |                                                |
+| **Translation**       | Naru                                           |
+| **Lyrics**            | Yuki Ayumu                                     |
+| **Timing**            | Yuki Ayumu                                     |
+| **Typesetting**       | Naru                                           |
+| **Quality Control**   | Naru, Natsukaze                                |
+| **Special Thanks**    | Dhan, Kirasaka Rasendria                       |
+
+### pololer muxer
+
+| Role                  | Name                                           |
+| --------------------- | ---------------------------------------------- |
+| **Encode**            | MTBB                                           |
+| **Muxer**             | pololer                                        |
 
 ---
 
@@ -45,7 +52,6 @@
 | **Resolution**     | 1920x1080p    |
 | **Codec**          | H.265 (x265) 10-bit |
 | **Aspect Ratio**   | 16:9          |
-| **Extra**          |               |
 
 ---
 
@@ -53,7 +59,7 @@
 
 | Track        | Codec | Channels | Bitrate | Source | Default | Forced |
 | ------------ | ----- | -------- | ------- | ------ | ------- | ------ |
-| **Japanese** | FLAC  | 2.0      |         |        | Yes     | No     |
+| **Japanese** | FLAC  | 2.0      | 665 kbps (16 bit/48kHz) | Kawaiika-Raws | Yes     | No     |
 
 ---
 
@@ -61,14 +67,15 @@
 
 | Track              | Language   | Language Code | Format | Default | Forced |
 | ------------------ | ---------- | ------------- | ------ | ------- | ------ |
-| **Full Subtitles** | Indonesia  | id            | ASS    | Yes     | No     |
+| **Caramel Fansub** | Indonesia  | id            | ASS    | Yes     | No     |
+| **Melody Fansub**  | Indonesia  | id            | ASS    | No      | Yes    |
 
 ---
 
-<!-- [cover-art]: https://cdn-eu.anidb.net/images/main/304775.jpg
-[tvdb-id]: https://thetvdb.com/series/atri-my-dear-moments
-[anidb-id]: https://anidb.net/anime/17635
-[tvdb-order]: https://thetvdb.com/series/atri-my-dear-moments/allseasons/official
+[cover-art]: https://cdn-eu.anidb.net/images/main/221453.jpg
+[tvdb-id]: https://thetvdb.com/movies/non-non-biyori-the-movie-vacation
+[anidb-id]: https://anidb.net/anime/13187
+[tvdb-order]: https://thetvdb.com/movies/non-non-biyori-the-movie-vacation
 [gh]: https://github.com/pololer-project/project-template
 [discord]: https://discord.gg/qefR5pXp8z
-[mpv]: https://mpv.io/ -->
+[mpv]: https://mpv.io/

@@ -1,47 +1,24 @@
 #!/usr/bin/env python3
 """
-MuxTools Automation Script for Anime Muxing.
+MuxTools Automation Script for Non Non Biyori Vacation.
 
-This script automates the process of muxing anime episodes using MuxTools.
-It supports batch processing of episodes, custom flags/naming, and dry-run mode.
-The script handles video, audio, subtitles, fonts, and chapters in a standardized way.
-
-Usage:
-    uv run python mux-system.py <episode> [outdir] [options]
-
-    <episode>: Episode specification:
-               - Single number: "1"
-               - Comma-separated list: "1,3,5"
-               - Range: "1-5"
-               - Mixed format: "1-3,5,7-9"
-               - All episodes: "all"
-    [outdir]: Output directory (default: "muxed")
-
-Options:
-    -v, --version: Version number for the release
-    -f, --flag: Group tag to include in the filename
-    -d, --dry-run: Test the muxing process without actually creating files
+Automates the process of muxing anime episodes using MuxTools.
+Optimized for efficiency, readability, and correct resource resolution.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 try:
     from muxtools import (
         AudioFile,
         Chapters,
         GlobSearch,
-        LoggingException,
         Premux,
         Setup,
         SubFile,
@@ -50,14 +27,12 @@ try:
         mux,
     )
 except ImportError as e:
-    raise ImportError("The 'muxtools' module is not installed. Run: uv sync") from e
+    sys.exit(f"Error: {e}. Run 'uv sync' to install dependencies.")
 
-__all__ = ["RunMode", "ShowConfig", "mux_episode", "parse_episode_list", "main"]
+__all__ = ["RunMode", "ShowConfig", "mux_episode", "main"]
 
 
 class RunMode(Enum):
-    """Enum to control script behavior."""
-
     NORMAL = "normal"
     DRYRUN = "dryrun"
 
@@ -68,358 +43,288 @@ class ShowConfig:
 
     name: str
     premux_dir: Path
-    audio_dir: Path
     sub_dir: Path
+    audio_dir: Path
     tmdb_id: int = 0
     titles: tuple[str, ...] = ()
-    songs: tuple[tuple[str, str, frozenset[int]], ...] = ()
 
     @classmethod
     def from_defaults(cls) -> ShowConfig:
-        """Create default configuration. Edit values here."""
+        """Create configuration relative to the script location."""
+        # Resolution relative to script location (root)
+        base = Path(__file__).resolve().parent
+
         return cls(
-            name="JudulAnime",
-            premux_dir=Path(""),
-            audio_dir=Path(""),
-            sub_dir=Path("./"),
-            tmdb_id=0,
-            titles=(
-                "Judul Episode 01",
-                "Judul Episode 02",
-            ),
-            songs=(
-                ("OP", "{opsync}", frozenset({1})),
-                ("ED", "{edsync}", frozenset({1})),
-            ),
+            name="Non Non Biyori Vacation",
+            premux_dir=base / "premux",
+            sub_dir=base / "subtitle",
+            audio_dir=base / "audio",
+            tmdb_id=494471,
+            titles=("Liburan",),
         )
 
 
-# Default configuration instance
 CONFIG = ShowConfig.from_defaults()
 
 
 @dataclass(slots=True)
 class MuxResult:
-    """Result of a mux operation."""
-
-    episode: int
+    episode: str | int
     success: bool
-    output_path: Path | None = None
     error: str | None = None
 
 
-def _find_video_file(episode_str: str, premux_dir: Path) -> Path | None:
-    """Find video file for the given episode."""
-    search = GlobSearch(f"*{episode_str}*.mkv", dir=str(premux_dir))
-    return search.paths[0] if search.paths else None
+def _get_episode_str(episode: str | int) -> str:
+    """Convert episode identifier to standard string format."""
+    if isinstance(episode, int):
+        return f"{episode:02d}"
+    return str(episode)
 
 
-def _find_audio_files(episode_str: str, audio_dir: Path) -> AudioFile | None:
-    """Find audio files for the given episode."""
+def _find_video(ep_str: str, config: ShowConfig) -> Path:
+    """Find the video file for the given episode string."""
     search = GlobSearch(
-        f"*{episode_str}*.flac", allow_multiple=True, dir=str(audio_dir)
+        "*.mkv",
+        allow_multiple=True,
+        recursive=True,
+        dir=str(config.premux_dir),
     )
-    return AudioFile(search.paths) if search.paths else None
+
+    for p in search.paths:
+        name = Path(p).name
+
+        # Standard episode match: " - 01 ", "E01)", or "S01E01"
+        if f" - {ep_str} " in name or f"E{ep_str})" in name or f"S01E{ep_str}" in name:
+            return Path(p)
+
+    # Fallback for movies (usually treated as ep 01)
+    if (ep_str == "01" or ep_str.lower() == "movie") and search.paths:
+        # If only one video file, assume it's the movie
+        if len(search.paths) == 1:
+            return Path(search.paths[0])
+
+        # Or if filename contains "Vacation" (specific to this show)
+        for p in search.paths:
+            if "Vacation" in Path(p).name:
+                return Path(p)
+
+    raise FileNotFoundError(f"Video file not found for episode {ep_str}")
 
 
-def _create_subtitle_file(
-    episode_str: str,
-    show_name: str,
-    episode_number: int,
-    config: ShowConfig,
-) -> SubFile | None:
-    """Create subtitle file with all merged content."""
-    base_path = Path(episode_str)
-    dialog_file = base_path / f"{show_name} - {episode_str} - Dialog.ass"
-    ts_file = base_path / f"{show_name} - {episode_str} - TS.ass"
+def _find_audio(ep_str: str, config: ShowConfig) -> Path:
+    """Find the audio file for the given episode string."""
+    # Map "Movie" to "01" for audio search if needed
+    search_str = ep_str
+    if ep_str.lower() == "movie":
+        search_str = "01"
 
-    if not dialog_file.exists():
-        return None
+    search = GlobSearch(
+        f"*Audio*{search_str}*.flac",
+        allow_multiple=True,
+        recursive=True,
+        dir=str(config.audio_dir),
+    )
 
-    sub_file = SubFile(str(dialog_file))
+    if not search.paths:
+        # specific fallback for this show/audio naming
+        if ep_str.lower() == "movie":
+            search = GlobSearch(
+                "*Audio*01*.flac",
+                allow_multiple=True,
+                recursive=True,
+                dir=str(config.audio_dir),
+            )
 
-    # Merge typesetting if exists
-    if ts_file.exists():
-        sub_file.merge(str(ts_file))
+        if not search.paths:
+            raise FileNotFoundError(f"Audio file not found for episode {ep_str}")
 
-    # Merge songs for this episode
-    log.info("Merging songs...")
-    for song_name, syncpoint, episodes in config.songs:
-        if episode_number in episodes:
-            sub_file = sub_file.merge(f"./songs/{song_name}.ass", syncpoint)
+    return Path(search.paths[0])
 
-    # Merge warning and clean up
-    sub_file.merge(r"./common/warning.ass").clean_garbage()
-    return sub_file
+
+def _get_subtitle_file(path: Path, delay: int = 0) -> SubFile:
+    """Prepare a subtitle file."""
+    if not path.exists():
+        raise FileNotFoundError(f"Subtitle file not found at {path}")
+
+    sub = SubFile(str(path), container_delay=delay)
+    # Apply cleaning
+    sub.merge(r"common/warning.ass").clean_styles().clean_garbage()
+    return sub
 
 
 def mux_episode(
-    episode_number: int,
-    out_dir: str = "muxed",
+    episode: str | int,
+    out_dir: Path,
     version: int = 1,
     flag: str = "testing",
     mode: RunMode = RunMode.NORMAL,
     config: ShowConfig | None = None,
 ) -> MuxResult:
-    """
-    Mux a single anime episode into an MKV file.
+    config = config or CONFIG
+    ep_str = _get_episode_str(episode)
+    version_str = "" if version == 1 else f" v{version}"
 
-    Args:
-        episode_number: The episode number to mux
-        out_dir: Directory where the output MKV file will be saved
-        version: Version number of the release (defaults to 1, not shown if 1)
-        flag: Group/tag name to include in the filename
-        mode: Controls whether to actually mux or just do a dry run
-        config: Show configuration (uses default if None)
+    # Title handling
+    title = ""
+    if (
+        isinstance(episode, int)
+        and config.titles
+        and 1 <= episode <= len(config.titles)
+    ):
+        title = f" | {config.titles[episode - 1]}"
 
-    Returns:
-        MuxResult with success status and optional output path or error
-    """
-    if config is None:
-        config = CONFIG
-
-    episode_str = f"{episode_number:02d}"
-    version_str = "" if version == 1 else f"v{version}"
-    episode_title = (
-        f" | {config.titles[episode_number - 1]}"
-        if config.titles and episode_number <= len(config.titles)
-        else ""
-    )
-
-    # Initialize setup with error_on_danger for stricter font validation
     setup = Setup(
-        episode_str,
+        ep_str,
         None,
         show_name=config.name,
         out_name=f"[{flag}] $show$ - $ep${version_str} (BDRip 1920x1080 HEVC FLAC) [$crc32$]",
-        mkv_title_naming=f"$show$ - $ep${version_str}{episode_title}",
-        out_dir=out_dir,
+        mkv_title_naming=f"$show$ - $ep${version_str}{title}",
+        out_dir=str(out_dir),
         clean_work_dirs=False,
-        error_on_danger=False,  # Set True to raise errors on missing fonts/glyphs
     )
 
-    log.debug(f"Starting mux of episode {episode_str}")
-
-    # Dry run mode - skip file checks
-    if mode == RunMode.DRYRUN:
-        # Still validate subtitle files exist
-        sub_file = _create_subtitle_file(
-            episode_str, config.name, episode_number, config
-        )
-        if not sub_file:
-            return MuxResult(
-                episode=episode_number,
-                success=False,
-                error="Subtitle files missing",
-            )
-
-        log.debug(f"Dry run for episode {episode_str} completed")
-        return MuxResult(episode=episode_number, success=True)
-
-    # Find video file
-    video_file = _find_video_file(episode_str, config.premux_dir)
-    if not video_file:
-        log.warn(f"Skipping episode {episode_str}: Video file not found", mux_episode)
-        return MuxResult(
-            episode=episode_number,
-            success=False,
-            error="Video file not found",
-        )
-
-    setup.set_default_sub_timesource(video_file)
-
-    # Create premux
-    premux = Premux(
-        video_file,
-        audio=None,
-        subtitles=None,
-        keep_attachments=False,
-        mkvmerge_args=["--no-global-tags", "--no-chapters"],
-    )
-
-    # Find audio files
-    audio_files = _find_audio_files(episode_str, config.audio_dir)
-    if not audio_files:
-        log.warn(f"Skipping episode {episode_str}: Audio files missing", mux_episode)
-        return MuxResult(
-            episode=episode_number,
-            success=False,
-            error="Audio files missing",
-        )
-
-    # Create subtitle file
-    sub_file = _create_subtitle_file(episode_str, config.name, episode_number, config)
-    if not sub_file:
-        log.warn(f"Skipping episode {episode_str}: Subtitle files missing", mux_episode)
-        return MuxResult(
-            episode=episode_number,
-            success=False,
-            error="Subtitle files missing",
-        )
-
-    # Generate chapters and collect fonts
-    chapters = Chapters.from_sub(sub_file, use_actor_field=True)
-    fonts = sub_file.collect_fonts(
-        use_system_fonts=False,
-        additional_fonts=[Path(f"{episode_str}/fonts"), Path("./songs/fonts")],
-    )
-
-    # Perform muxing
     try:
-        outfile: Path = mux(
-            premux,
-            audio_files.to_track("Japanese", "ja", default=True),
-            sub_file.to_track(f"{flag}", "id", default=True),
-            *fonts,
-            chapters,
-            tmdb=TmdbConfig(config.tmdb_id, write_cover=True),
+        # Locating Resources
+        video_file = _find_video(ep_str, config)
+        audio_file = _find_audio(ep_str, config)
+
+        caramel_path = config.sub_dir / "Caramel.ass"
+        melody_path = config.sub_dir / "Melody.ass"
+
+        log.info("Resources found:")
+        log.info(f"  Video:   {video_file}")
+        log.info(f"  Audio:   {audio_file}")
+        log.info(f"  Sub(Caramel): {caramel_path}")
+        log.info(f"  Sub(Melody):  {melody_path}")
+
+        if mode == RunMode.DRYRUN:
+            log.info(f"[Dry Run] Would mux episode {ep_str} to {out_dir}")
+            return MuxResult(episode, True)
+
+        setup.set_default_sub_timesource(str(video_file))
+
+        # Audio
+        audio = AudioFile(str(audio_file))
+
+        # Prepare Subtitles
+        caramel_sub = _get_subtitle_file(caramel_path, delay=1000)
+        melody_sub = _get_subtitle_file(melody_path)
+
+        # Chapters & Fonts
+        chapters = Chapters(r"./subtitle/chapter.xml")
+
+        # Collect fonts from both subtitle tracks
+        fonts_caramel = caramel_sub.collect_fonts(
+            use_system_fonts=False, additional_fonts=r"./subtitle/font-caramel"
         )
-        print(f"Successfully muxed: {outfile.name}")
-        return MuxResult(episode=episode_number, success=True, output_path=outfile)
+
+        fonts_melody = melody_sub.collect_fonts(
+            use_system_fonts=False, additional_fonts=r"./subtitle/font-melody"
+        )
+
+        # Muxing
+        premux = Premux(
+            str(video_file),
+            audio=None,
+            subtitles=None,
+            keep_attachments=False,
+            mkvmerge_args=["--no-global-tags", "--no-chapters"],
+        )
+
+        mux_args = [
+            premux,
+            audio.to_track(lang="ja", default=True),
+            caramel_sub.to_track("Caramel Fansub", "id", default=True),
+            melody_sub.to_track("Melody Fansub", "id", default=False),
+            *fonts_caramel,
+            *fonts_melody,
+        ]
+
+        if chapters:
+            mux_args.append(chapters)
+
+        outfile = mux(
+            *mux_args,
+            tmdb=TmdbConfig(config.tmdb_id, write_cover=True, movie=True),
+        )
+        log.info(f"Muxed: {outfile.name}")
+        return MuxResult(episode, True)
+
     except Exception as e:
-        log.error(f"Error muxing episode {episode_str}: {e}", mux_episode)
-        return MuxResult(episode=episode_number, success=False, error=str(e))
+        log.error(f"Failed to mux {ep_str}: {e}")
+        return MuxResult(episode, False, str(e))
 
 
-def parse_episode_list(episode_arg: str) -> list[int]:
-    """
-    Parse episode input into a list of episode numbers.
-
-    Args:
-        episode_arg: String containing episode selection (e.g., "1,3,5", "1-5", or "all")
-
-    Returns:
-        List of episode numbers to process (empty list for "all")
-
-    Raises:
-        ValueError: If the episode argument format is invalid
-    """
-    if episode_arg == "all":
-        return []
-
-    episodes: list[int] = []
-
-    for item in episode_arg.split(","):
-        item = item.strip()
-
-        if "-" in item:
-            # Handle range notation
-            parts = item.split("-")
-            if len(parts) != 2 or not all(p.strip().isdigit() for p in parts):
-                raise ValueError(f"Invalid episode range: {item}")
-
-            start, end = int(parts[0].strip()), int(parts[1].strip())
-            if start > end:
-                raise ValueError(f"Invalid episode range (start > end): {item}")
-
-            episodes.extend(range(start, end + 1))
-
-        elif item.isdigit():
-            episodes.append(int(item))
-
-        else:
-            raise ValueError(f"Invalid episode number: {item}")
-
-    return sorted(set(episodes))
-
-
-def _discover_all_episodes(sub_dir: Path) -> list[int]:
-    """Discover all episodes from subtitle directory."""
-    pattern = re.compile(r".*?(\d+).*")
-    search = GlobSearch("*.ass", allow_multiple=True, recursive=True, dir=str(sub_dir))
-
-    return sorted(
-        {
-            int(match.group(1))
-            for path in search.paths
-            if (match := pattern.match(Path(path).stem))
+def parse_episodes(arg: str) -> list[str | int]:
+    """Parse episode argument into a list of episode identifiers."""
+    if arg.lower() == "all":
+        # Integer episodes
+        eps = {
+            int(p.stem[:2])
+            for p in CONFIG.sub_dir.glob("*.ass")
+            if p.stem[:2].isdigit()
         }
-    )
+        return sorted(list(eps), key=lambda x: str(x))
+
+    eps = []
+    for part in arg.split(","):
+        part = part.strip()
+        if "-" in part and part.replace("-", "").isdigit():
+            start, end = map(int, part.split("-"))
+            eps.extend(range(start, end + 1))
+        elif part.isdigit():
+            eps.append(int(part))
+        else:
+            eps.append(part)
+
+    # Deduplicate while preserving order
+    return list(dict.fromkeys(eps))
 
 
 def main() -> int:
-    """
-    Main function to parse arguments and control the muxing process.
-
-    Returns:
-        Exit code (0 for success, non-zero for errors)
-    """
-    parser = argparse.ArgumentParser(
-        description="Anime muxing automation using MuxTools",
-        epilog="Example: uv run python mux-system.py 1-5 output_dir -f MyGroup -v 2",
-    )
-    parser.add_argument(
-        "episode",
-        type=str,
-        help='Episode(s) to mux: number, range (e.g., "1-5"), comma-separated list, or "all"',
-    )
+    parser = argparse.ArgumentParser(description="Optimized Mux System")
+    parser.add_argument("episodes", help="Episodes to mux (e.g., 1, 1-5, all)")
     parser.add_argument(
         "outdir",
-        type=str,
-        help="Output directory (default: muxed)",
-        default="muxed",
         nargs="?",
+        default="muxed",
+        help="Output directory",
     )
-    parser.add_argument(
-        "-v", "--version", type=int, default=1, help="Version number (default: 1)"
-    )
-    parser.add_argument(
-        "-f", "--flag", default="testing", help="Group tag for filename"
-    )
-    parser.add_argument(
-        "-d", "--dry-run", action="store_true", help="Testing without mux"
-    )
+    parser.add_argument("-f", "--flag", default="pololer", help="Release group/flag")
+    parser.add_argument("-d", "--dry-run", action="store_true", help="Dry run")
+    parser.add_argument("-v", "--version", type=int, default=1, help="Version number")
+
     args = parser.parse_args()
 
-    mode = RunMode.DRYRUN if args.dry_run else RunMode.NORMAL
-    if mode == RunMode.DRYRUN:
-        log.info("Running in dry-run mode - no files will be created")
-
     try:
-        # Create output directory
-        Path(args.outdir).mkdir(exist_ok=True, parents=True)
+        episodes = parse_episodes(args.episodes)
+    except ValueError:
+        log.error("Invalid episode specification")
+        return 1
 
-        # Parse episode argument
-        try:
-            episode_numbers = parse_episode_list(args.episode)
-        except ValueError as e:
-            log.error(str(e))
-            return 2
+    if not episodes:
+        log.error("No episodes found")
+        return 1
 
-        # Discover all episodes if "all" was specified
-        if not episode_numbers and args.episode == "all":
-            episode_numbers = _discover_all_episodes(CONFIG.sub_dir)
-            if not episode_numbers:
-                log.error("No valid episodes found in subtitle directory.")
-                return 1
-            log.info(f"Found episodes: {episode_numbers}")
+    out_dir = Path(args.outdir).resolve()
+    if not args.dry_run:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        if not episode_numbers:
-            log.error("No valid episodes specified.")
-            return 1
-
-        # Mux episodes
-        results = [
-            mux_episode(
-                ep, args.outdir, version=args.version, flag=args.flag, mode=mode
-            )
-            for ep in episode_numbers
-        ]
-
-        successful = sum(1 for r in results if r.success)
-        log.info(
-            f"Muxing complete: {successful} of {len(episode_numbers)} episodes processed"
+    results = [
+        mux_episode(
+            ep,
+            out_dir,
+            flag=args.flag,
+            mode=RunMode.DRYRUN if args.dry_run else RunMode.NORMAL,
+            version=args.version,
         )
+        for ep in episodes
+    ]
 
-        return 0 if successful > 0 else 1
+    success_count = sum(1 for r in results if r.success)
+    log.info(f"Processed {success_count}/{len(results)} episodes successfully.")
 
-    except LoggingException:
-        log.crit("Critical error while muxing!")
-        return 1
-
-    except Exception as e:
-        log.error(f"Unexpected error: {e}")
-        return 1
+    return 0 if success_count == len(results) else 1
 
 
 if __name__ == "__main__":
