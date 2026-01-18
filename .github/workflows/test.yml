@@ -33,6 +33,11 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Create dummy files
+        run: |
+          mkdir -p premux
+          touch "premux/[MTBB] Non Non Biyori Vacation (2018) (BD 1080p) [14E2C589].mkv"
+          
       - name: Run mux-system.py dry-run test
         run: uv run python mux-system.py Movie -d
 

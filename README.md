@@ -68,7 +68,7 @@
 | Track              | Language   | Language Code | Format | Default | Forced |
 | ------------------ | ---------- | ------------- | ------ | ------- | ------ |
 | **Caramel Fansub** | Indonesia  | id            | ASS    | Yes     | No     |
-| **Melody Fansub**  | Indonesia  | id            | ASS    | No      | Yes    |
+| **Melody Fansub**  | Indonesia  | id            | ASS    | No      | No    |
 
 ---
 
