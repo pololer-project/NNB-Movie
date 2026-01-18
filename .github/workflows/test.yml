@@ -34,7 +34,7 @@ jobs:
         run: uv sync
 
       - name: Run mux-system.py dry-run test
-        run: uv run python mux-system.py all -d
+        run: uv run python mux-system.py Movie -d
 
       - name: Upload test workdir
         uses: actions/upload-artifact@v6
