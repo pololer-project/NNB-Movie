@@ -37,6 +37,8 @@ jobs:
         run: |
           mkdir -p premux
           touch "premux/[MTBB] Non Non Biyori Vacation (2018) (BD 1080p) [14E2C589].mkv"
+          mkdir -p audio
+          touch "audio/nnb-movie.flac"
           
       - name: Run mux-system.py dry-run test
         run: uv run python mux-system.py Movie -d
